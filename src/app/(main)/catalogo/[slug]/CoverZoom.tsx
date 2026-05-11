@@ -110,7 +110,7 @@ export default function CoverZoom({ src, alt }: Props) {
                   alt={alt}
                   width={800}
                   height={1200}
-                  style={{ width: '92vw', maxWidth: '600px', height: 'auto' }}
+                  style={{ width: '92vw', maxWidth: '800px', height: 'auto' }}
                   className="cursor-zoom-out rounded-lg shadow-2xl"
                   onClick={() => setZoomed(false)}
                   draggable={false}
