@@ -142,10 +142,11 @@ export async function addComment(
     .limit(1)
     .single()
 
+  const order = purchase?.order as { buyer_id: string; status: string } | null | any
   const isVerified =
     purchase &&
-    (purchase.order as { buyer_id: string; status: string } | null)?.buyer_id === user.id &&
-    (purchase.order as { buyer_id: string; status: string } | null)?.status === 'completed'
+    order?.buyer_id === user.id &&
+    order?.status === 'completed'
 
   const { error } = await supabase.from('comment').insert({
     book_id: bookId,

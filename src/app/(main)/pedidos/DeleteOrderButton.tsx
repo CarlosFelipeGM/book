@@ -8,7 +8,7 @@ export default function DeleteOrderButton({ orderId }: { orderId: string }) {
   const [pending, startTransition] = useTransition()
 
   function handleConfirm() {
-    startTransition(() => deleteOrder(orderId))
+    startTransition(async () => { await deleteOrder(orderId) })
   }
 
   return (

@@ -12,8 +12,8 @@ type Book = {
   presale_price: number | null
   cover_url: string | null
   status: string
-  sort_order: number
-  release_date: string | null
+  sort_order?: number | null
+  release_date?: string | null
 }
 
 const statusBadge: Record<string, { label: string; color: string }> = {
