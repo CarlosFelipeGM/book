@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { register } from '../actions'
+import PasswordInput from '../PasswordInput'
 
 type State = { error?: string; success?: string } | null
 
@@ -72,15 +73,13 @@ export default function RegisterPage() {
               <label htmlFor="password" className="block text-sm font-medium text-stone-700">
                 Contraseña
               </label>
-              <input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 required
                 autoComplete="new-password"
                 placeholder="Mínimo 8 caracteres"
                 minLength={8}
-                className={inputClass}
               />
             </div>
 

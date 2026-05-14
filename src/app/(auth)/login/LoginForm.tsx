@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { login } from '../actions'
+import PasswordInput from '../PasswordInput'
 
 type State = { error?: string } | null
 
@@ -40,13 +41,11 @@ export default function LoginForm({ next, isCheckout }: { next: string; isChecko
                 placeholder="tu@correo.com"
                 className={inputClass}
               />
-              <input
+              <PasswordInput
                 name="password"
-                type="password"
                 required
                 autoComplete="current-password"
                 placeholder="Contraseña"
-                className={inputClass}
               />
               {state?.error && (
                 <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.error}</p>
@@ -103,8 +102,8 @@ export default function LoginForm({ next, isCheckout }: { next: string; isChecko
           </div>
           <div className="space-y-1.5">
             <label htmlFor="password" className="block text-sm font-medium text-stone-700">Contraseña</label>
-            <input id="password" name="password" type="password" required autoComplete="current-password"
-              placeholder="••••••••" className={inputClass} />
+            <PasswordInput id="password" name="password" required autoComplete="current-password"
+              placeholder="••••••••" />
           </div>
           {state?.error && (
             <div className="px-3 py-2 bg-red-50 border border-red-100 rounded-lg">

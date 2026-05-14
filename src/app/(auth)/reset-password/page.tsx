@@ -3,11 +3,9 @@
 import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
 import { resetPassword } from '../actions'
+import PasswordInput from '../PasswordInput'
 
 type State = { error?: string; success?: boolean } | null
-
-const inputClass =
-  'w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-transparent transition'
 
 export default function ResetPasswordPage() {
   const [state, formAction, pending] = useActionState<State, FormData>(resetPassword, null)
@@ -29,28 +27,24 @@ export default function ResetPasswordPage() {
         <form action={formAction} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="password" className="block text-sm font-medium text-stone-700">Nueva contraseña</label>
-            <input
+            <PasswordInput
               id="password"
               name="password"
-              type="password"
               required
               minLength={6}
               autoComplete="new-password"
               placeholder="••••••••"
-              className={inputClass}
             />
           </div>
           <div className="space-y-1.5">
             <label htmlFor="confirm" className="block text-sm font-medium text-stone-700">Confirmar contraseña</label>
-            <input
+            <PasswordInput
               id="confirm"
               name="confirm"
-              type="password"
               required
               minLength={6}
               autoComplete="new-password"
               placeholder="••••••••"
-              className={inputClass}
             />
           </div>
           {state?.error && (
