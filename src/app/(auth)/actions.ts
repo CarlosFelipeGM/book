@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 
 export async function login(
   _prevState: { error?: string } | null,
@@ -18,7 +19,8 @@ export async function login(
     return { error: 'Email o contraseña incorrectos.' }
   }
 
-  redirect('/dashboard')
+  const next = formData.get('next') as string
+  redirect(next && next.startsWith('/') ? next : '/dashboard')
 }
 
 export async function register(
@@ -45,4 +47,40 @@ export async function register(
   }
 
   return { success: 'Te enviamos un link de confirmación a tu correo.' }
+}
+
+export async function forgotPassword(
+  _prev: { error?: string; success?: boolean } | null,
+  formData: FormData
+) {
+  const supabase = await createClient()
+  const email = (formData.get('email') as string).trim()
+  const headersList = await headers()
+  const host = headersList.get('host') ?? 'localhost:3000'
+  const proto = headersList.get('x-forwarded-proto') ?? 'http'
+  const origin = `${proto}://${host}`
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/api/auth/callback?next=/reset-password`,
+  })
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function resetPassword(
+  _prev: { error?: string; success?: boolean } | null,
+  formData: FormData
+) {
+  const supabase = await createClient()
+  const password = formData.get('password') as string
+  const confirm  = formData.get('confirm') as string
+
+  if (password !== confirm) return { error: 'Las contraseñas no coinciden.' }
+  if (password.length < 6)  return { error: 'La contraseña debe tener al menos 6 caracteres.' }
+
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) return { error: error.message }
+
+  redirect('/dashboard')
 }

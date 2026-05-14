@@ -8,8 +8,8 @@ import Image from 'next/image'
 type Method = 'yape' | 'plin' | 'bank_transfer'
 
 const methodLabels: Record<Method, string> = {
-  yape: 'Yape',
-  plin: 'Plin',
+  yape:          'Yape',
+  plin:          'Plin',
   bank_transfer: 'Transferencia',
 }
 
@@ -18,6 +18,7 @@ type BookLine = {
   title: string
   cover_url: string | null
   delivery: string
+  deliveryType: string
   price: number
 }
 
@@ -25,19 +26,39 @@ export default function CheckoutForm({
   orderId,
   total,
   bookLines,
+  userEmail     = '',
+  userPhone     = '',
+  isAuthenticated,
 }: {
   orderId: string
   total: number
   bookLines: BookLine[]
+  userEmail?: string
+  userPhone?: string
+  isAuthenticated: boolean
 }) {
   const [state, formAction, pending] = useActionState(submitPayment, null)
-  const [uploading, setUploading]     = useState(false)
-  const [voucherUrl, setVoucherUrl]   = useState('')
-  const [preview, setPreview]         = useState<string | null>(null)
-  const [method, setMethod]           = useState<Method>('yape')
+
+  // Payment
+  const [method, setMethod]         = useState<Method>('yape')
+  const [uploading, setUploading]   = useState(false)
+  const [voucherUrl, setVoucherUrl] = useState('')
+  const [preview, setPreview]       = useState<string | null>(null)
+
+  // Contact
+  const [email, setEmail]           = useState(userEmail)
+  const [phone, setPhone]           = useState(userPhone)
+  const [hasWhatsapp, setHasWhatsapp] = useState(false)
+
+  // Delivery
+  const [pdfDelivery, setPdfDelivery]         = useState<'email' | 'whatsapp'>('email')
+  const [physicalAddress, setPhysicalAddress] = useState('')
+
   const [clientError, setClientError] = useState('')
 
-  const isYapePlin = method === 'yape' || method === 'plin'
+  const hasPDF      = bookLines.some(b => b.deliveryType === 'pdf' || b.deliveryType === 'both')
+  const hasPhysical = bookLines.some(b => b.deliveryType === 'physical' || b.deliveryType === 'both')
+  const isYapePlin  = method === 'yape' || method === 'plin'
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -57,10 +78,49 @@ export default function CheckoutForm({
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    setClientError('')
+    if (!email.trim()) {
+      e.preventDefault()
+      setClientError('El correo electrónico es obligatorio.')
+      return
+    }
+    if (!phone.trim()) {
+      e.preventDefault()
+      setClientError('El número de teléfono es obligatorio.')
+      return
+    }
     if (!voucherUrl) {
       e.preventDefault()
       setClientError('Debes subir la captura del comprobante antes de confirmar.')
     }
+  }
+
+  // Success state for anonymous users
+  if (state?.success) {
+    return (
+      <div className="max-w-md mx-auto text-center py-16 px-4">
+        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-stone-900 mb-3">¡Pedido registrado!</h2>
+        <p className="text-stone-600 mb-2">
+          Tu comprobante fue recibido. Verificaremos tu pago y procesaremos el pedido.
+        </p>
+        <p className="text-stone-500 text-sm">
+          Te confirmaremos al correo <strong className="text-stone-700">{email}</strong>
+        </p>
+        {hasPDF && (
+          <p className="text-stone-400 text-xs mt-3">
+            El PDF será enviado{' '}
+            {pdfDelivery === 'whatsapp'
+              ? `por WhatsApp al ${phone}`
+              : `al correo ${email}`}
+          </p>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -77,13 +137,7 @@ export default function CheckoutForm({
               <div key={line.id} className="flex items-center gap-4">
                 <div className="w-16 h-24 rounded-lg bg-stone-100 overflow-hidden shrink-0 relative">
                   {line.cover_url ? (
-                    <Image
-                      src={line.cover_url}
-                      alt={line.title}
-                      fill
-                      sizes="64px"
-                      className="object-contain"
-                    />
+                    <Image src={line.cover_url} alt={line.title} fill sizes="64px" className="object-contain" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-2xl">📖</div>
                   )}
@@ -116,9 +170,7 @@ export default function CheckoutForm({
                 </p>
                 <p className="text-xs text-amber-600">Monto exacto:</p>
                 <p className="text-3xl font-bold text-amber-800">S/ {total.toFixed(2)}</p>
-                <p className="text-xs text-amber-600">
-                  Luego sube la captura del comprobante en el formulario.
-                </p>
+                <p className="text-xs text-amber-600">Luego sube la captura del comprobante.</p>
               </div>
             </div>
           ) : (
@@ -138,10 +190,134 @@ export default function CheckoutForm({
         </div>
       </div>
 
-      {/* ── Columna derecha ── */}
-      <div className="space-y-4">
+      {/* ── Columna derecha — un solo <form> ── */}
+      <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
+        {/* Hidden fields */}
+        <input type="hidden" name="order_id"            value={orderId} />
+        <input type="hidden" name="amount"              value={total} />
+        <input type="hidden" name="method"              value={method} />
+        <input type="hidden" name="voucher_url"         value={voucherUrl} />
+        <input type="hidden" name="buyer_email"         value={email} />
+        <input type="hidden" name="buyer_phone"         value={phone} />
+        <input type="hidden" name="buyer_whatsapp"      value={String(hasWhatsapp)} />
+        <input type="hidden" name="pdf_delivery_method" value={pdfDelivery} />
+        <input type="hidden" name="physical_address"    value={physicalAddress} />
 
-        {/* Método de pago */}
+        {/* ── Datos de contacto ── */}
+        <div className="bg-white rounded-xl border border-stone-200 p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-stone-700">Datos de contacto</h2>
+
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-1">
+              Correo electrónico
+              <span className="ml-1.5 text-xs text-red-500 font-normal">obligatorio</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="tu@correo.com"
+              className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400"
+              readOnly={isAuthenticated}
+            />
+            {isAuthenticated && (
+              <p className="text-xs text-stone-400 mt-1">Correo de tu cuenta registrada</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-1">
+              Número de teléfono
+              <span className="ml-1.5 text-xs text-red-500 font-normal">obligatorio</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="Ej. 987654321"
+                className="flex-1 px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setHasWhatsapp(!hasWhatsapp)
+                  if (hasWhatsapp) setPdfDelivery('email')
+                }}
+                className={`px-3 py-2 text-xs rounded-lg border transition-colors font-medium whitespace-nowrap ${
+                  hasWhatsapp
+                    ? 'bg-green-600 text-white border-green-600'
+                    : 'border-stone-300 text-stone-500 hover:border-stone-400'
+                }`}
+              >
+                {hasWhatsapp ? '✓ WhatsApp' : 'WhatsApp?'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Entrega ── */}
+        {(hasPDF || hasPhysical) && (
+          <div className="bg-white rounded-xl border border-stone-200 p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-stone-700">Entrega</h2>
+
+            {hasPDF && (
+              <div>
+                <p className="text-sm text-stone-600 mb-2">¿Cómo deseas recibir el PDF?</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPdfDelivery('email')}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-colors font-medium ${
+                      pdfDelivery === 'email'
+                        ? 'bg-stone-900 text-white border-stone-900'
+                        : 'border-stone-300 text-stone-600 hover:border-stone-500'
+                    }`}
+                  >
+                    📧 Por correo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!hasWhatsapp}
+                    onClick={() => hasWhatsapp && setPdfDelivery('whatsapp')}
+                    title={!hasWhatsapp ? 'Activa WhatsApp en los datos de contacto' : ''}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-colors font-medium ${
+                      pdfDelivery === 'whatsapp'
+                        ? 'bg-green-600 text-white border-green-600'
+                        : hasWhatsapp
+                        ? 'border-stone-300 text-stone-600 hover:border-stone-500'
+                        : 'border-stone-200 text-stone-300 cursor-not-allowed'
+                    }`}
+                  >
+                    📱 Por WhatsApp
+                  </button>
+                </div>
+                {!hasWhatsapp && (
+                  <p className="text-xs text-stone-400 mt-1.5">
+                    Activa WhatsApp arriba para habilitar esta opción
+                  </p>
+                )}
+              </div>
+            )}
+
+            {hasPhysical && (
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">
+                  Para el libro físico — coordinaremos la entrega
+                </label>
+                <textarea
+                  value={physicalAddress}
+                  onChange={e => setPhysicalAddress(e.target.value)}
+                  placeholder="Distrito, referencias o notas para coordinar la entrega..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400 resize-none"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Método de pago ── */}
         <div className="bg-white rounded-xl border border-stone-200 p-5">
           <h2 className="text-sm font-semibold text-stone-700 mb-3">Método de pago</h2>
           <div className="flex gap-2">
@@ -162,17 +338,8 @@ export default function CheckoutForm({
           </div>
         </div>
 
-        {/* Formulario comprobante */}
-        <form
-          action={formAction}
-          onSubmit={handleSubmit}
-          className="bg-white rounded-xl border border-stone-200 p-5 space-y-4"
-        >
-          <input type="hidden" name="order_id"   value={orderId} />
-          <input type="hidden" name="amount"      value={total} />
-          <input type="hidden" name="method"      value={method} />
-          <input type="hidden" name="voucher_url" value={voucherUrl} />
-
+        {/* ── Comprobante ── */}
+        <div className="bg-white rounded-xl border border-stone-200 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-stone-700">Registrar comprobante</h2>
 
           <div>
@@ -184,7 +351,7 @@ export default function CheckoutForm({
               className={`flex flex-col items-center justify-center gap-3 w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors p-5 ${
                 voucherUrl
                   ? 'border-green-400 bg-green-50'
-                  : clientError
+                  : clientError && !voucherUrl
                   ? 'border-red-300 bg-red-50'
                   : 'border-stone-300 bg-stone-50 hover:border-stone-400 hover:bg-stone-100'
               }`}
@@ -227,22 +394,32 @@ export default function CheckoutForm({
               className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400"
             />
           </div>
+        </div>
 
-          {(clientError || state?.error) && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-              {clientError || state?.error}
-            </p>
-          )}
+        {(clientError || state?.error) && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100">
+            {clientError || state?.error}
+          </p>
+        )}
 
-          <button
-            type="submit"
-            disabled={pending || uploading}
-            className="w-full py-3 bg-stone-900 text-white font-semibold rounded-xl hover:bg-stone-700 transition-colors disabled:opacity-60 text-sm"
-          >
-            {pending ? 'Enviando...' : `Confirmar pago — S/ ${total.toFixed(2)}`}
-          </button>
-        </form>
-      </div>
+        <button
+          type="submit"
+          disabled={pending || uploading}
+          className="w-full py-3.5 bg-stone-900 text-white font-semibold rounded-xl hover:bg-stone-700 transition-colors disabled:opacity-60 text-sm"
+        >
+          {pending ? 'Enviando...' : `Confirmar pago — S/ ${total.toFixed(2)}`}
+        </button>
+
+        {!isAuthenticated && (
+          <p className="text-center text-xs text-stone-400">
+            ¿Ya tienes cuenta?{' '}
+            <a href="/login" className="text-stone-600 underline hover:text-stone-900">
+              Inicia sesión
+            </a>{' '}
+            para ver tu historial de pedidos
+          </p>
+        )}
+      </form>
     </div>
   )
 }

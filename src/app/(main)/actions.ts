@@ -7,10 +7,8 @@ import { redirect } from 'next/navigation'
 
 export async function createOrder(bookId: string) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { data: { user } } = await supabase.auth.getUser()
+  // No redirect — anonymous purchases allowed
 
   const { data: book } = await supabase
     .from('book')
@@ -29,10 +27,16 @@ export async function createOrder(bookId: string) {
   const price =
     book.status === 'presale' && book.presale_price ? book.presale_price : book.price
 
-  const { data: order, error } = await supabase
+  // Admin client for writes: handles both anonymous and authenticated
+  const admin = createAdminClient()
+
+  // Only link to a real registered user (not Supabase anonymous sessions)
+  const realUserId = user?.email ? user.id : null
+
+  const { data: order, error } = await admin
     .from('order')
     .insert({
-      buyer_id: user.id,
+      buyer_id: realUserId,
       status: 'pending',
       total: price,
       delivery_mode: writer?.delivery_preference ?? 'platform',
@@ -42,7 +46,7 @@ export async function createOrder(bookId: string) {
 
   if (error || !order) throw new Error('Error al crear el pedido')
 
-  await supabase.from('order_item').insert({
+  await admin.from('order_item').insert({
     order_id: order.id,
     book_id: book.id,
     quantity: 1,
@@ -54,24 +58,56 @@ export async function createOrder(bookId: string) {
 }
 
 export async function submitPayment(
-  _prev: { error?: string } | null,
+  _prev: { error?: string; success?: boolean } | null,
   formData: FormData
 ) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: 'No autenticado' }
+  const { data: { user } } = await supabase.auth.getUser()
 
   const orderId         = formData.get('order_id') as string
   const method          = formData.get('method') as string
   const operationNumber = (formData.get('operation_number') as string).trim() || null
   const voucherUrl      = formData.get('voucher_url') as string
   const amount          = formData.get('amount') as string
+  const buyerEmail      = (formData.get('buyer_email') as string ?? '').trim()
+  const buyerPhone      = (formData.get('buyer_phone') as string ?? '').trim()
+  const buyerWhatsapp   = formData.get('buyer_whatsapp') === 'true'
+  const pdfDelivery     = (formData.get('pdf_delivery_method') as string) || 'email'
+  const physicalAddress = (formData.get('physical_address') as string ?? '').trim() || null
 
-  if (!voucherUrl) return { error: 'Debes subir la captura del comprobante.' }
+  if (!buyerEmail)  return { error: 'El correo electrónico es obligatorio.' }
+  if (!buyerPhone)  return { error: 'El número de teléfono es obligatorio.' }
+  if (!voucherUrl)  return { error: 'Debes subir la captura del comprobante.' }
 
-  const { error } = await supabase.from('payment').insert({
+  const admin = createAdminClient()
+
+  // Verify order exists and ownership
+  const { data: existingOrder } = await admin
+    .from('order')
+    .select('id, buyer_id')
+    .eq('id', orderId)
+    .single()
+
+  if (!existingOrder) return { error: 'Pedido no encontrado.' }
+
+  const realUserId = user?.email ? user.id : null
+  if (existingOrder.buyer_id && existingOrder.buyer_id !== realUserId) {
+    return { error: 'No autorizado.' }
+  }
+
+  // Update order with contact info
+  // Also link to registered account if they're logged in and order was anonymous
+  await admin.from('order').update({
+    buyer_email: buyerEmail,
+    buyer_phone: buyerPhone,
+    buyer_whatsapp: buyerWhatsapp,
+    pdf_delivery_method: pdfDelivery,
+    physical_address: physicalAddress,
+    status: 'paid',
+    ...(realUserId && !existingOrder.buyer_id ? { buyer_id: realUserId } : {}),
+  }).eq('id', orderId)
+
+  const { error } = await admin.from('payment').insert({
     order_id: orderId,
     method,
     amount: parseFloat(amount),
@@ -82,10 +118,10 @@ export async function submitPayment(
 
   if (error) return { error: error.message }
 
-  await supabase.from('order').update({ status: 'paid' }).eq('id', orderId)
-
   revalidatePath(`/checkout/${orderId}`)
-  redirect(`/pedidos/${orderId}`)
+
+  if (realUserId) redirect(`/pedidos/${orderId}`)
+  return { success: true }
 }
 
 export async function deleteOrder(orderId: string) {
@@ -93,7 +129,6 @@ export async function deleteOrder(orderId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Solo si el pedido pertenece al usuario y no tiene pago registrado
   const { data: order } = await supabase
     .from('order')
     .select('id, status, buyer_id')
@@ -124,17 +159,14 @@ export async function addComment(
   formData: FormData
 ) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Debes iniciar sesión para comentar' }
 
-  const bookId = formData.get('book_id') as string
-  const content = formData.get('content') as string
+  const bookId   = formData.get('book_id') as string
+  const content  = formData.get('content') as string
   const ratingRaw = formData.get('rating') as string
-  const rating = ratingRaw ? parseInt(ratingRaw) : null
+  const rating   = ratingRaw ? parseInt(ratingRaw) : null
 
-  // Verificar si es compra verificada
   const { data: purchase } = await supabase
     .from('order_item')
     .select('id, order:order(buyer_id, status)')
